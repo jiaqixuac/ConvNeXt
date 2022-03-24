@@ -22,6 +22,9 @@ from torch._six import inf
 
 from tensorboardX import SummaryWriter
 
+import subprocess
+
+
 class SmoothedValue(object):
     """Track a series of values and provide access to smoothed values over a
     window or the global series average.
@@ -294,8 +297,8 @@ def save_on_master(*args, **kwargs):
 
 
 def init_distributed_mode(args):
-
     if args.dist_on_itp:
+        print(f"\nDist init: dist_on_itp")
         args.rank = int(os.environ['OMPI_COMM_WORLD_RANK'])
         args.world_size = int(os.environ['OMPI_COMM_WORLD_SIZE'])
         args.gpu = int(os.environ['OMPI_COMM_WORLD_LOCAL_RANK'])
@@ -305,12 +308,25 @@ def init_distributed_mode(args):
         os.environ['WORLD_SIZE'] = str(args.world_size)
         # ["RANK", "WORLD_SIZE", "MASTER_ADDR", "MASTER_PORT", "LOCAL_RANK"]
     elif 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
+        print(f"\nDist init: 2nd method")
         args.rank = int(os.environ["RANK"])
         args.world_size = int(os.environ['WORLD_SIZE'])
         args.gpu = int(os.environ['LOCAL_RANK'])
     elif 'SLURM_PROCID' in os.environ:
+        print(f"\nDist init: SLURM")
         args.rank = int(os.environ['SLURM_PROCID'])
         args.gpu = args.rank % torch.cuda.device_count()
+
+        # by jqxu
+        world_size = int(os.environ["SLURM_NTASKS"])
+        args.world_size = world_size
+
+        if "MASTER_PORT" not in os.environ:
+            os.environ["MASTER_PORT"] = "29500"
+        node_list = os.environ["SLURM_NODELIST"]
+        addr = subprocess.getoutput(f"scontrol show hostname {node_list} | head -n1")
+        if "MASTER_ADDR" not in os.environ:
+            os.environ["MASTER_ADDR"] = addr
 
         os.environ['RANK'] = str(args.rank)
         os.environ['LOCAL_RANK'] = str(args.gpu)
@@ -324,8 +340,8 @@ def init_distributed_mode(args):
 
     torch.cuda.set_device(args.gpu)
     args.dist_backend = 'nccl'
-    print('| distributed init (rank {}): {}, gpu {}'.format(
-        args.rank, args.dist_url, args.gpu), flush=True)
+    print('| distributed init (rank {}): {}, gpu {}, world size: {}'.format(
+        args.rank, args.dist_url, args.gpu, args.world_size), flush=True)
     torch.distributed.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                          world_size=args.world_size, rank=args.rank)
     torch.distributed.barrier()
@@ -421,7 +437,8 @@ def get_grad_norm_(parameters, norm_type: float = 2.0) -> torch.Tensor:
     if norm_type == inf:
         total_norm = max(p.grad.detach().abs().max().to(device) for p in parameters)
     else:
-        total_norm = torch.norm(torch.stack([torch.norm(p.grad.detach(), norm_type).to(device) for p in parameters]), norm_type)
+        total_norm = torch.norm(torch.stack([torch.norm(p.grad.detach(), norm_type).to(device) for p in parameters]),
+                                norm_type)
     return total_norm
 
 
@@ -444,6 +461,7 @@ def cosine_scheduler(base_value, final_value, epochs, niter_per_ep, warmup_epoch
     assert len(schedule) == epochs * niter_per_ep
     return schedule
 
+
 def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler, model_ema=None):
     output_dir = Path(args.output_dir)
     epoch_name = str(epoch)
@@ -461,7 +479,7 @@ def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler, mo
             to_save['model_ema'] = get_state_dict(model_ema)
 
         save_on_master(to_save, checkpoint_path)
-    
+
     if is_main_process() and isinstance(epoch, int):
         to_del = epoch - args.save_ckpt_num * args.save_ckpt_freq
         old_ckpt = output_dir / ('checkpoint-%s.pth' % to_del)
@@ -493,7 +511,7 @@ def auto_load_model(args, model, model_without_ddp, optimizer, loss_scaler, mode
         print("Resume checkpoint %s" % args.resume)
         if 'optimizer' in checkpoint and 'epoch' in checkpoint:
             optimizer.load_state_dict(checkpoint['optimizer'])
-            if not isinstance(checkpoint['epoch'], str): # does not support resuming with 'best', 'best-ema'
+            if not isinstance(checkpoint['epoch'], str):  # does not support resuming with 'best', 'best-ema'
                 args.start_epoch = checkpoint['epoch'] + 1
             else:
                 assert args.eval, 'Does not support resuming with checkpoint-best'

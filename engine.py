@@ -14,6 +14,7 @@ from timm.utils import accuracy, ModelEma
 
 import utils
 
+
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
                     device: torch.device, epoch: int, loss_scaler, max_norm: float = 0,
@@ -52,13 +53,13 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
             with torch.cuda.amp.autocast():
                 output = model(samples)
                 loss = criterion(output, targets)
-        else: # full precision
+        else:  # full precision
             output = model(samples)
             loss = criterion(output, targets)
 
         loss_value = loss.item()
 
-        if not math.isfinite(loss_value): # this could trigger if using AMP
+        if not math.isfinite(loss_value):  # this could trigger if using AMP
             print("Loss is {}, stopping training".format(loss_value))
             assert math.isfinite(loss_value)
 
@@ -73,7 +74,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                 optimizer.zero_grad()
                 if model_ema is not None:
                     model_ema.update(model)
-        else: # full precision
+        else:  # full precision
             loss /= update_freq
             loss.backward()
             if (data_iter_step + 1) % update_freq == 0:
@@ -127,12 +128,12 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
             if use_amp:
                 wandb_logger._wandb.log({'Rank-0 Batch Wise/train_grad_norm': grad_norm}, commit=False)
             wandb_logger._wandb.log({'Rank-0 Batch Wise/global_train_step': it})
-            
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+
 
 @torch.no_grad()
 def evaluate(data_loader, model, device, use_amp=False):

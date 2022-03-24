@@ -24,6 +24,7 @@ import json
 
 try:
     from apex.optimizers import FusedNovoGrad, FusedAdam, FusedLAMB, FusedSGD
+
     has_apex = True
 except ImportError:
     has_apex = False
@@ -52,12 +53,13 @@ def get_num_layer_for_convnext(var_name):
         if stage_id == 0 or stage_id == 1:
             layer_id = stage_id + 1
         elif stage_id == 2:
-            layer_id = 3 + block_id // 3 
+            layer_id = 3 + block_id // 3
         elif stage_id == 3:
             layer_id = 12
         return layer_id
     else:
         return num_max_layer + 1
+
 
 class LayerDecayValueAssigner(object):
     def __init__(self, values):

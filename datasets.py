@@ -7,11 +7,25 @@
 
 
 import os
+import os.path as osp
 from torchvision import datasets, transforms
 
 from timm.data.constants import \
     IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD, IMAGENET_INCEPTION_MEAN, IMAGENET_INCEPTION_STD
 from timm.data import create_transform
+
+import mmcv
+from mmcv.fileio import FileClient
+import json
+from PIL import Image
+from abc import abstractmethod
+import torch.utils.data as data
+import logging
+
+_logger = logging.getLogger(__name__)
+
+_ERROR_RETRY = 50
+
 
 def build_dataset(is_train, args):
     transform = build_transform(is_train, args)
@@ -40,6 +54,10 @@ def build_dataset(is_train, args):
         dataset = datasets.ImageFolder(root, transform=transform)
         nb_classes = args.nb_classes
         assert len(dataset.class_to_idx) == nb_classes
+    elif args.data_set == "CEPH22k":
+        root = args.data_path
+        dataset = ImageCephDataset(root, transform=transform)
+        nb_classes = len(dataset.parser.class_to_idx.keys())
     else:
         raise NotImplementedError()
     print("Number of the class = %d" % nb_classes)
@@ -75,11 +93,11 @@ def build_transform(is_train, args):
     t = []
     if resize_im:
         # warping (no cropping) when evaluated at 384 or larger
-        if args.input_size >= 384:  
+        if args.input_size >= 384:
             t.append(
-            transforms.Resize((args.input_size, args.input_size), 
-                            interpolation=transforms.InterpolationMode.BICUBIC), 
-        )
+                transforms.Resize((args.input_size, args.input_size),
+                                  interpolation=transforms.InterpolationMode.BICUBIC),
+            )
             print(f"Warping {args.input_size} size input images...")
         else:
             if args.crop_pct is None:
@@ -87,10 +105,118 @@ def build_transform(is_train, args):
             size = int(args.input_size / args.crop_pct)
             t.append(
                 # to maintain same ratio w.r.t. 224 images
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BICUBIC),  
+                transforms.Resize(size, interpolation=transforms.InterpolationMode.BICUBIC),
             )
             t.append(transforms.CenterCrop(args.input_size))
 
     t.append(transforms.ToTensor())
     t.append(transforms.Normalize(mean, std))
     return transforms.Compose(t)
+
+
+class ImageCephDataset(data.Dataset):
+
+    def __init__(
+            self,
+            root,
+            parser=None,
+            annotation_root='/mnt/lustre/share_data/wangtianyu.vendor/dataset',
+            is_training=False,
+            transform=None,
+            target_transform=None,
+    ):
+        if parser is None or isinstance(parser, str):
+            parser = ParserCephImage(root=root, annotation_root=annotation_root)
+        self.parser = parser
+        self.transform = transform
+        self.target_transform = target_transform
+        self._consecutive_errors = 0
+
+    def __getitem__(self, index):
+        img, target = self.parser[index]
+        self._consecutive_errors = 0
+        if self.transform is not None:
+            img = self.transform(img)
+        if target is None:
+            target = -1
+        elif self.target_transform is not None:
+            target = self.target_transform(target)
+        return img, target
+
+    def __len__(self):
+        return len(self.parser)
+
+    def filename(self, index, basename=False, absolute=False):
+        return self.parser.filename(index, basename, absolute)
+
+    def filenames(self, basename=False, absolute=False):
+        return self.parser.filenames(basename, absolute)
+
+
+class Parser:
+    def __init__(self):
+        pass
+
+    @abstractmethod
+    def _filename(self, index, basename=False, absolute=False):
+        pass
+
+    def filename(self, index, basename=False, absolute=False):
+        return self._filename(index, basename=basename, absolute=absolute)
+
+    def filenames(self, basename=False, absolute=False):
+        return [self._filename(index, basename=basename, absolute=absolute) for index in range(len(self))]
+
+
+class ParserCephImage(Parser):
+    def __init__(
+            self,
+            root,
+            annotation_root,
+            io_backend='petrel',
+            **kwargs):
+        super().__init__()
+
+        self.io_backend = io_backend
+        self.file_client = None
+        self.kwargs = kwargs
+
+        self.root = root  # dataset:s3://imagenet22k
+        with open(osp.join(annotation_root, 'class_to_idx.json'), 'r') as f:
+            self.class_to_idx = json.loads(f.read())
+
+        with open(osp.join(annotation_root, 'label.txt'), 'r') as f:
+            self.samples = f.read().splitlines()
+
+        self._consecutive_errors = 0
+
+    def __getitem__(self, index):
+        if self.file_client is None:
+            self.file_client = FileClient(self.io_backend, **self.kwargs)
+
+        filepath, target = self.samples[index].split(' ')
+        filepath = osp.join(self.root, filepath)
+
+        try:
+            img_bytes = self.file_client.get(filepath)
+            img = mmcv.imfrombytes(img_bytes)[:, :, ::-1]
+        except Exception as e:
+            _logger.warning(f'Skipped sample (index {index}, file {filepath}). {str(e)}')
+            self._consecutive_errors += 1
+            if self._consecutive_errors < _ERROR_RETRY:
+                return self.__getitem__((index + 1) % len(self))
+            else:
+                raise e
+        self._consecutive_errors = 0
+
+        img = Image.fromarray(img)
+        target = self.class_to_idx[target]
+        return img, target
+
+    def __len__(self):
+        return len(self.samples)
+
+    def _filename(self, index, basename=False, absolute=False):
+        filename, _ = self.samples[index].split(' ')
+        filename = osp.join(self.root, filename)
+        return filename

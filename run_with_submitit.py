@@ -14,6 +14,7 @@ from pathlib import Path
 import main as classification
 import submitit
 
+
 def parse_args():
     classification_parser = classification.get_args_parser()
     parser = argparse.ArgumentParser("Submitit for ConvNeXt", parents=[classification_parser])
@@ -28,6 +29,7 @@ def parse_args():
                         help='Comment to pass to scheduler, e.g. priority message')
     return parser.parse_args()
 
+
 def get_shared_folder() -> Path:
     user = os.getenv("USER")
     if Path("/checkpoint/").is_dir():
@@ -36,6 +38,7 @@ def get_shared_folder() -> Path:
         return p
     raise RuntimeError("No shared folder available")
 
+
 def get_init_file():
     # Init file must not exist, but it's parent dir must exist.
     os.makedirs(str(get_shared_folder()), exist_ok=True)
@@ -43,6 +46,7 @@ def get_init_file():
     if init_file.exists():
         os.remove(str(init_file))
     return init_file
+
 
 class Trainer(object):
     def __init__(self, args):
@@ -78,7 +82,7 @@ class Trainer(object):
 
 def main():
     args = parse_args()
-    
+
     if args.job_dir == "":
         args.job_dir = get_shared_folder() / "%j"
 
@@ -117,6 +121,7 @@ def main():
     job = executor.submit(trainer)
 
     print("Submitted job_id:", job.job_id)
+
 
 if __name__ == "__main__":
     main()
