@@ -54,9 +54,14 @@ def build_dataset(is_train, args):
         dataset = datasets.ImageFolder(root, transform=transform)
         nb_classes = args.nb_classes
         assert len(dataset.class_to_idx) == nb_classes
+    elif args.data_set == "IMNET1k":
+        root = osp.join(args.data_path, 'train' if is_train else 'val')
+        split = 'train' if is_train else 'val'
+        dataset = ImageCephDataset(root, split, transform=transform)
+        nb_classes = 1000
     elif args.data_set == "CEPH22k":
         root = args.data_path
-        dataset = ImageCephDataset(root, transform=transform)
+        dataset = ImageCephDataset(root, 'train', transform=transform)
         nb_classes = len(dataset.parser.class_to_idx.keys())
     else:
         raise NotImplementedError()
@@ -119,14 +124,20 @@ class ImageCephDataset(data.Dataset):
     def __init__(
             self,
             root,
+            split,
             parser=None,
-            annotation_root='/mnt/lustre/share_data/wangtianyu.vendor/dataset',
-            is_training=False,
             transform=None,
             target_transform=None,
     ):
+        if '22k' in root:
+            # Imagenet 22k
+            annotation_root = '/mnt/lustre/share_data/wangtianyu.vendor/dataset'
+        else:
+            # Imagenet
+            annotation_root = '/mnt/lustre/share/images/meta'
         if parser is None or isinstance(parser, str):
-            parser = ParserCephImage(root=root, annotation_root=annotation_root)
+            parser = ParserCephImage(root=root, split=split,
+                                     annotation_root=annotation_root)
         self.parser = parser
         self.transform = transform
         self.target_transform = target_transform
@@ -172,6 +183,7 @@ class ParserCephImage(Parser):
     def __init__(
             self,
             root,
+            split,
             annotation_root,
             io_backend='petrel',
             **kwargs):
@@ -182,11 +194,15 @@ class ParserCephImage(Parser):
         self.kwargs = kwargs
 
         self.root = root  # dataset:s3://imagenet22k
-        with open(osp.join(annotation_root, 'class_to_idx.json'), 'r') as f:
-            self.class_to_idx = json.loads(f.read())
-
-        with open(osp.join(annotation_root, 'label.txt'), 'r') as f:
-            self.samples = f.read().splitlines()
+        if '22k' in root:
+            with open(osp.join(annotation_root, 'class_to_idx.json'), 'r') as f:
+                self.class_to_idx = json.loads(f.read())
+            with open(osp.join(annotation_root, 'label.txt'), 'r') as f:
+                self.samples = f.read().splitlines()
+        else:
+            self.class_to_idx = None
+            with open(osp.join(annotation_root, f'{split}.txt'), 'r') as f:
+                self.samples = f.read().splitlines()
 
         self._consecutive_errors = 0
 
@@ -210,7 +226,10 @@ class ParserCephImage(Parser):
         self._consecutive_errors = 0
 
         img = Image.fromarray(img)
-        target = self.class_to_idx[target]
+        if self.class_to_idx is not None:
+            target = self.class_to_idx[target]
+        else:
+            target = int(target)
         return img, target
 
     def __len__(self):

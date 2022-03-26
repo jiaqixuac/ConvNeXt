@@ -21,9 +21,9 @@ srun -p ${PARTITION} \
     --exclude=SH-IDC1-10-140-0-232 \
     ${SRUN_ARGS} \
     python -u main.py \
-    --model convnext_large --drop_path 0.1 \
-    --batch_size 128 --lr 4e-3 --update_freq 1 \
-    --warmup_epochs 5 --epochs 90 \
-    --data_set CEPH22k --nb_classes 21841 --disable_eval true \
-    --data_path dataset:s3://imagenet22k \
-    --output_dir work_dirs
+    --model convnext_large --drop_path 0.5 \
+    --batch_size 128 --lr 4e-3 --update_freq 2 \
+    --model_ema true --model_ema_eval true \
+    --data_set IMNET1k --nb_classes 1000 \
+    --data_path /mnt/lustre/share/images \
+    --output_dir work_dirs/convnext_large_1k
