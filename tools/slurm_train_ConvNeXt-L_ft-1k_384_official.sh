@@ -18,12 +18,13 @@ srun -p ${PARTITION} \
     --cpus-per-task=${CPUS_PER_TASK} \
     --kill-on-bad-exit=1 \
     --quotatype=reserved \
-    --exclude=SH-IDC1-10-140-0-232 \
     ${SRUN_ARGS} \
     python -u main.py \
-    --model convnext_large --drop_path 0.1 \
-    --batch_size 128 --lr 4e-3 --update_freq 1 \
-    --warmup_epochs 5 --epochs 90 \
-    --data_set CEPH22k --nb_classes 21841 --disable_eval true \
-    --data_path dataset:s3://imagenet22k \
-    --output_dir work_dirs
+    --model convnext_large --drop_path 0.3 --input_size 384 \
+    --batch_size 32 --lr 5e-5 --update_freq 1 \
+    --warmup_epochs 0 --epochs 30 --weight_decay 1e-8  \
+    --layer_decay 0.8 --head_init_scale 0.001 --cutmix 0 --mixup 0 \
+    --data_set IMNET1k --nb_classes 1000 \
+    --finetune pretrained/convnext_large_22k_224.pth \
+    --data_path /mnt/lustre/share/images \
+    --output_dir work_dirs/convnext_large_ft-1k_384_official
