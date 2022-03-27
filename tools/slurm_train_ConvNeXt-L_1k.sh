@@ -24,6 +24,7 @@ srun -p ${PARTITION} \
     --model convnext_large --drop_path 0.5 \
     --batch_size 128 --lr 4e-3 --update_freq 2 \
     --model_ema true --model_ema_eval true \
+    --resume work_dirs/convnext_large_1k/checkpoint-238.pth \
     --data_set IMNET1k --nb_classes 1000 \
     --data_path /mnt/lustre/share/images \
     --output_dir work_dirs/convnext_large_1k

@@ -24,6 +24,7 @@ srun -p ${PARTITION} \
     --model convnext_large --drop_path 0.1 \
     --batch_size 128 --lr 4e-3 --update_freq 1 \
     --warmup_epochs 5 --epochs 90 \
+    --resume work_dirs/convnext_large_22k/checkpoint-66.pth \
     --data_set CEPH22k --nb_classes 21841 --disable_eval true \
     --data_path dataset:s3://imagenet22k \
-    --output_dir work_dirs
+    --output_dir work_dirs/convnext_large_22k

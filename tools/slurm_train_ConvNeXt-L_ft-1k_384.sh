@@ -25,6 +25,6 @@ srun -p ${PARTITION} \
     --warmup_epochs 0 --epochs 30 --weight_decay 1e-8  \
     --layer_decay 0.8 --head_init_scale 0.001 --cutmix 0 --mixup 0 \
     --data_set IMNET1k --nb_classes 1000 \
-    --finetune work_dirs/convnext_large_22k/checkpoint-64.pth \
+    --finetune work_dirs/convnext_large_22k/checkpoint-89.pth \
     --data_path /mnt/lustre/share/images \
-    --output_dir work_dirs/convnext_large_ft-1k_384_ep64
+    --output_dir work_dirs/convnext_large_ft-1k_384_ep89
